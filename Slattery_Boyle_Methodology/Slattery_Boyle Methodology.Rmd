@@ -1,0 +1,119 @@
+---
+title: "Slattery Boyle Sentencing Analysis"
+author: "Jacob Gosselin"
+date: "7/24/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(readr)
+library(plyr)
+library(plotrix)
+library(boot)
+```
+Hi there! What follows is a written out methodology for Injustice Watch's sentencing analysis on Judge Maura Slattery Boyle. All work was done in R and Stata. The R code and Stata code can be downloaded at our GitHub, linked below the article; since our data is read in from the Cook County Online Data portal, our work can easily be re-created or expanded upon. Thanks!
+
+# Reading in Data/Converting Sentence Term
+
+We'll start by reading in our original sentencing data (from https://datacatalog.cookcountyil.gov/Courts/Sentencing/tg8v-tm6u). We'll then create a conversion table to standardize our units (i.e. years=1, months=1/12, weeks=1/52, days=1/365, all other units are left undefined but rows are kept). We'll then convert our sentence (i.e. 6 months=.5), and store it under a new variable, "converted_sentence".
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=60)}
+original <- read_csv("https://datacatalog.cookcountyil.gov/api/views/tg8v-tm6u/rows.csv?accessType=DOWNLOAD")
+conversion_table <- revalue(original$COMMITMENT_UNIT, c("Year(s)"=1, "Months"=1/12, "Weeks"=1/52, "Days"=1/365, "Natural Life"=100, "Pounds"=NA, "Dollars"=NA, "Term"=NA))
+conversion_table <- as.double(conversion_table)
+original["converted_sentence"]=conversion_table*original$COMMITMENT_TERM
+```
+#Creation of Hispanic Race
+In case you want to do any deeper racial analyis (we'll be dealing solely in Black defendants v. white defendants here), it's necessary to standardize the race codes in regards to Latinx defendants. We've assigned both "White [Hisanic or Latino]" and "Black [Hispanic or Latino]" to one category, Hispanic.
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=60)}
+x<-revalue(original$RACE, c("white [Hispanic or Latino]"="HISPANIC", "white/Black [Hispanic or Latino]"="HISPANIC"))
+original["race2"]=x
+```
+#Creating relevant subsets
+
+We'll now create a series of subsets, to find median sentences. We're going to create a subset for class 1, 2, 3, 4, and X felonies. This will exclude 2792 cases, which are filed under class A, B, C, M, O, P, U, or Z felonies. A lot of these are mistaken filings, but we don't want to assign them. Since the sample size is large, we're better of ignoring them (they only make up <2% of cases). 
+
+We're also going to create further subsets (PJ) for sentences to Prison or Jail. We'll use these to find median sentences; while it eliminates a good chunk of our cases (~41%), you have to do this to get an accurate read on median sentence time. Otherwise, a two year probation will skew our median, since that will be considered harsher than a one year prison sentence. 
+
+We'll also create a subset of just Slattery Boyle's sentences.
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=60)}
+CLASS_1 <- subset(original, CLASS=="1")
+CLASS_2 <- subset(original, CLASS=="2")
+CLASS_3 <- subset(original, CLASS=="3")
+CLASS_4 <- subset(original, CLASS=="4")
+CLASS_X <- subset(original, CLASS=="X") 
+CLASS_1_PJ <- subset(original, CLASS=="1" & (SENTENCE_TYPE=="Prison" | SENTENCE_TYPE=="Jail"))
+CLASS_2_PJ <- subset(original, CLASS=="2" & (SENTENCE_TYPE=="Prison" | SENTENCE_TYPE=="Jail"))
+CLASS_3_PJ <- subset(original, CLASS=="3" & (SENTENCE_TYPE=="Prison" | SENTENCE_TYPE=="Jail"))
+CLASS_4_PJ <- subset(original, CLASS=="4" & (SENTENCE_TYPE=="Prison" | SENTENCE_TYPE=="Jail"))
+CLASS_X_PJ <- subset(original, CLASS=="X" & (SENTENCE_TYPE=="Prison" | SENTENCE_TYPE=="Jail"))
+original_PJ <- subset(original, SENTENCE_TYPE=="Prison" | SENTENCE_TYPE=="Jail")
+boyle <- subset(original, SENTENCE_JUDGE=="Maura  Slattery Boyle")
+boyle_PJ <- subset(original_PJ, SENTENCE_JUDGE=="Maura  Slattery Boyle")
+median_1 <- median(CLASS_1_PJ$converted_sentence, na.rm=TRUE)
+median_2 <- median(CLASS_2_PJ$converted_sentence, na.rm=TRUE)
+median_3 <- median(CLASS_3_PJ$converted_sentence, na.rm=TRUE)
+median_4 <- median(CLASS_4_PJ$converted_sentence, na.rm=TRUE)
+median_X <- median(CLASS_X_PJ$converted_sentence, na.rm=TRUE)
+median_1 
+median_2 
+median_3 
+median_4 
+median_X
+```
+The outputs are our median prison sentences by felony class.
+
+#Analysis 1: Rankings and Subsetting for Criminal Judges
+Our first step will be constructing a ranking of Criminal Division judges by sentence severity. We'll do this in both R and Stata (the Stata code can be found in a .do file in our GitHub). We're going to create a subset of our original which solely includes felonies of class 1, 2, 3, 4, and X (which is the vast majority of entries). Then we're going to create a boolean for whether the charge resulted in prison time, and if so, whether that prison sentence was above the median.
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=60)}
+original_subset <- subset(original, CLASS=="1" | CLASS=="2" | CLASS=="3" | CLASS=="4" | CLASS=="X")
+conversion_table2 <- revalue(original_subset$SENTENCE_TYPE, c("Prison"=TRUE, "Jail"=TRUE))
+original_subset["PJ"]=conversion_table2
+above_median <- (original_subset$PJ==TRUE & ((original_subset$CLASS=="1" & original_subset$converted_sentence>median_1) | (original_subset$CLASS=="2" & original_subset$converted_sentence>median_2) | (original_subset$CLASS=="3" & original_subset$converted_sentence>median_3) | (original_subset$CLASS=="4" & original_subset$converted_sentence>median_4) | (original_subset$CLASS=="X" & original_subset$converted_sentence>median_X)))
+original_subset["above_median"] <- above_median
+write_csv(original_subset, "~/Desktop/rankings.csv")
+```
+Sadly here our neat R Markdown file fails us. We now switch to Stata. As mentioned above, the code can be found in our GitHub, but we can describe it here: We use each boolean to create a table of A) How many sentences each judge has handed down, B) How many prison/jail sentences each judge has handed down, C) How many class 1, 2, 3, and 4 felonies each judge has seen, D) How many class 1, 2, 3, and 4 felonies have resulted in prison time, D) How many of the class 1, 2, 3, and 4 felony sentences which resulted in prison were "above the median", and E) How many prison/jail sentences above the median each judge has handed down overall. We also drop every judge who's ruled on under 1000 cases, (it's unfair to include them, as their decision making patterns are still very susceptible to statistical randomness), and further subset to only include judges within the Criminal Division. We then calculate the percent of class 4 felony sentences resulting in prison time, and the percent of prison/jail sentences above the median. We finally average out the two, to create our best measure of sentencing severity; this accounts for the severity of sentence type (we only look at class 4 felonies here, i.e. the most minor of felony offenses, to be fair to Judges handling more serious cases like Slattery Boyle) and sentence length. Using our final measure, we see that of the 24 Criminal Division judges with over 1000 cases, Slattery Boyle is the harshest sentencer by our best metric. Again, feel free to check out our .do file for confirmation. 
+
+#Significance Tests
+
+Now we'll test the statistical significance of the disparity between Slattery Boyle's sentencing and the average Criminal Division judge's sentencing. We'll be doing this with Prison/Jail sentences above the median and the percent of class 4 felony sentences which result in prison time. We'll do this using the Bootstrap Method. First we'll look at sentencing above the median. We're going to take Slattery Boyle's Prison/Jail subset, and construct a 95th Percentile Confidence Interval for "Percent of Sentences Above the Median" from re-sampling. We're going to slim down our dataset before we do this (bootstrap re-sampling takes a decent amount of processing power, and I'm working with an 11-inch Macbook Air I bought refurbished). 
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=60)}
+boyle_PJ_2<-c(boyle_PJ["CLASS"], boyle_PJ["converted_sentence"])
+boyle_PJ_2<-data.frame(boyle_PJ_2)
+f_abovemedian<-function(data,indices){
+  sample1<-data[indices,]
+  sum(sample1$CLASS=="1" & sample1$converted_sentence>median_1 | sample1$CLASS=="2" & sample1$converted_sentence>median_2 | sample1$CLASS=="3" & sample1$converted_sentence>median_3 | sample1$CLASS=="4" & sample1$converted_sentence>median_4 | sample1$CLASS=="X" & sample1$converted_sentence>median_X, na.rm=TRUE) / sum(sample1$CLASS=="1" | sample1$CLASS=="2" | sample1$CLASS=="3" | sample1$CLASS=="4" | sample1$CLASS=="X", na.rm=TRUE)
+}
+boyle_PJ_boot<-boot(boyle_PJ_2, f_abovemedian, R=6000)
+plot(boyle_PJ_boot)
+boot.ci(boyle_PJ_boot)
+```
+Our 95% Confidence interval is roughly ~53%-58%. What this means is that if there was no difference between Slattery Boyle and the average Cook County Criminal judge, there's a 95% chance that the overall rate of sentencing above the median for Criminal Court judges would be between 53% and 58%. However, our actual overall rate for the 24 Criminal Court judges who've served on over 1000 cases is 49.6%, squarely outside that range (you can see it in our rankings spreadsheet, saved in the GitHub file). In other words, we've just ruled out statistical randomness in the discrepancy between Slattery Boyle's sentences, and those of the average Cook County Criminal Division judge. For reference, 5% is a widely used significance value when it comes to public policy data. 
+
+No we'll do the same thing with the percent of sentences resulting in prison time for class 4 felonies. 
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=60)}
+boyle2<-subset(boyle, CLASS==4)
+boyle_2<-c(boyle2["CLASS"], boyle2["SENTENCE_TYPE"])
+boyle_2<-data.frame(boyle_2)
+f_prisonpercent<-function(data,indices){
+  sample1<-data[indices,]
+  sum(sample1$SENTENCE_TYPE=="Prison")/nrow(sample1)
+}
+boyle_PJ_boot<-boot(boyle_2, f_prisonpercent, R=6000)
+plot(boyle_PJ_boot)
+boot.ci(boyle_PJ_boot)
+```
+Our 95% confidence interval is ~66%-71%. Again, the average Cook County Criminal Division judge is assigning prison/jail for class 4 felonies 58% of the time, which is WAY out of this interval. Now we've ruled out statistical randomness for the discrepancy in sentence type. Again, we're using 5% as this is the typical significance level used in public policy data; we could easily drop this though (i.e. use 1% instead), since our confidence intervals don't even come close to including the actual values seen in the overall population.
+
+#Data Shortcomings
+In closing, I want to address the critiques that can (and will) be leveled against this data analysis. The data used here (which is publicly available through the State's Attorney's Office) is extremely incomplete. However, it is the best available since the Cook County Circuit Court has yet to release any of their own sentencing data to the public. 
+
+In particular, the data does not include details about the defendant, i.e. criminal history, which has an IMMENSE impact on sentencing decisions. However, given that cases are assigned randomly, and each judge included in our analysis as a point of comparison to Slattery Boyle is from the Criminal Division and has served on over 1000 cases, it's fair to assume that the distribution of defendants (in terms of criminal history) is fairly even. In other words, while it would be unfair to pick out any single data point as an example of severe sentencing, given the incomplete information included, our large sample size gives validity to the trends observed. 
+
+We also adjust for this in our analysis. Each felony class has its own respective median sentence, so our "sentencing above the median" measurement doesn't unfairly punish judges who have serve on more serious crimes. We also only look at the percent of class 4 felony sentences that result in prison or jail time (the most minor of felony offenses). While this approach isn't perfect, it does go a far way towards alleviating any skew in our severity metric that would arise from one judge serving on more serious offenses. 
+
+That's it! Again, all code is available for download at the GitHub linked below our article, and can be used to recreate our findings or build upon our work for further analysis of sentencing by Cook County judges. Thanks to Cook County State's Attorney Kim Foxx for making this data available to the public. Any further questions about our analysis can be directed to jacobgosselin@uchicago.edu. 
