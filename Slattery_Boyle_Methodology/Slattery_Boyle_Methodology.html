@@ -123,6 +123,7 @@ $(document).ready(function () {
 </div>
 
 
+<p><b>AN UPDATED VERSION OF THIS SENTENCING ANALYSIS CAN BE FOUND <a href="https://jaketg97.github.io/Jacob-Toner-Gosselin/cook_county_sentencing/CCSAO_sentencing_analysis.html"> HERE </a>, SUMMARIZED <a href= "https://jaketg97.github.io/Jacob-Toner-Gosselin/cook_county_sentencing/judging_judges"> HERE </a> WITH CODE DOWNLOADABLE <a href="https://github.com/jaketg97/Jacob-Toner-Gosselin/blob/main/cook_county_sentencing/CCSAO_sentencing_analysis.Rmd"> HERE </a>. </b> </p>
 <p>Hi there! What follows is a written out methodology for Injustice Watch’s sentencing analysis on Judge Maura Slattery Boyle. All work was done in R and Stata. The R code and Stata code can be downloaded at our GitHub, linked below the article; since our data is read in from the Cook County Online Data portal, our work can easily be re-created or expanded upon. Thanks!</p>
 <div id="reading-in-dataconverting-sentence-term" class="section level1">
 <h1>Reading in Data/Converting Sentence Term</h1>
@@ -153,14 +154,6 @@ $(document).ready(function () {
 conversion_table &lt;- as.double(conversion_table)</code></pre>
 <pre><code>## Warning: NAs introduced by coercion</code></pre>
 <pre class="r"><code>original[&quot;converted_sentence&quot;] = conversion_table * original$COMMITMENT_TERM</code></pre>
-</div>
-<div id="creation-of-hispanic-race" class="section level1">
-<h1>Creation of Hispanic Race</h1>
-<p>In case you want to do any deeper racial analyis (we’ll be dealing solely in Black defendants v. white defendants here), it’s necessary to standardize the race codes in regards to Latinx defendants. We’ve assigned both “White [Hisanic or Latino]” and “Black [Hispanic or Latino]” to one category, Hispanic.</p>
-<pre class="r"><code>x &lt;- revalue(original$RACE, c(`white [Hispanic or Latino]` = &quot;HISPANIC&quot;, 
-    `white/Black [Hispanic or Latino]` = &quot;HISPANIC&quot;))</code></pre>
-<pre><code>## The following `from` values were not present in `x`: white [Hispanic or Latino], white/Black [Hispanic or Latino]</code></pre>
-<pre class="r"><code>original[&quot;race2&quot;] = x</code></pre>
 </div>
 <div id="creating-relevant-subsets" class="section level1">
 <h1>Creating relevant subsets</h1>
